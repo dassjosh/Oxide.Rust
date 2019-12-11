@@ -259,7 +259,7 @@ namespace Oxide.Game.Rust
 
             object loginSpecific = Interface.CallHook("CanClientLogin", connection);
             object loginCovalence = Interface.CallHook("CanUserLogin", name, id, ip);
-            object canLogin = loginSpecific ?? loginCovalence; // TODO: Fix 'RustCore' hook conflict when both return
+            object canLogin = loginSpecific ?? loginCovalence; // TODO: Fix hook conflict when multiple return
 
             if (canLogin is string || canLogin is bool && !(bool)canLogin)
             {
@@ -270,7 +270,7 @@ namespace Oxide.Game.Rust
             // Call game and covalence hooks
             object approvedSpecific = Interface.CallHook("OnUserApprove", connection);
             object approvedCovalence = Interface.CallHook("OnUserApproved", name, id, ip);
-            return approvedSpecific ?? approvedCovalence; // TODO: Fix 'RustCore' hook conflict when both return
+            return approvedSpecific ?? approvedCovalence; // TODO: Fix hook conflict when multiple return
         }
 
         /// <summary>
@@ -290,12 +290,12 @@ namespace Oxide.Game.Rust
         /// <summary>
         /// Called when the player sends a chat message
         /// </summary>
-        /// <param name="arg"></param>
+        /// <param name="player"></param>
         /// <param name="message"></param>
         /// <param name="channel"></param>
         /// <returns></returns>
         [HookMethod("IOnPlayerChat")]
-        private object IOnPlayerChat(ConsoleSystem.Arg arg, string message, Chat.ChatChannel channel)
+        private object IOnPlayerChat(BasePlayer basePlayer, string message, Chat.ChatChannel channel)
         {
             // Ignore empty and "default" text
             if (string.IsNullOrEmpty(message) || message.Equals("text"))
@@ -303,32 +303,31 @@ namespace Oxide.Game.Rust
                 return true;
             }
 
-            // Update arg with escaped message
-            arg.Args[0] = message;
-
             // Get player objects
-            BasePlayer player = arg.Connection.player as BasePlayer;
-            IPlayer iplayer = player?.IPlayer;
-            if (iplayer == null)
+            IPlayer player = basePlayer?.IPlayer;
+            if (player == null)
             {
                 return null;
             }
 
             // Call game and covalence hooks
-            object chatSpecific = Interface.CallHook("OnPlayerChat", arg, channel);
-            object chatCovalence = Interface.CallHook("OnUserChat", iplayer, message);
-            return chatSpecific ?? chatCovalence; // TODO: Fix 'RustCore' hook conflict when both return
+            object chatSpecific = Interface.CallHook("OnPlayerChat", basePlayer, message, channel);
+            object chatCovalence = Interface.CallHook("OnUserChat", player, message);
+            //object chatDeprecated = Interface.Oxide.CallDeprecatedHook("OnPlayerChat", $"OnPlayerChat(BasePlayer player, string message, Chat.ChatChannel channel)",
+            //    new System.DateTime(2020, 1, 1), new ConsoleSystem.Arg(ConsoleSystem.Option.Server.FromConnection(basePlayer.Connection), ConsoleSystem.BuildCommand("chat.say", message)), channel);
+            return chatSpecific ?? chatCovalence /*?? chatDeprecated*/; // TODO: Fix hook conflict when multiple return
         }
 
         /// <summary>
         /// Called when the player sends a chat command
         /// </summary>
-        /// <param name="arg"></param>
+        /// <param name="basePlayer"></param>
+        /// <param name="message"></param>
         /// <returns></returns>
         [HookMethod("IOnPlayerCommand")]
-        private void IOnPlayerCommand(ConsoleSystem.Arg arg)
+        private void IOnPlayerCommand(BasePlayer basePlayer, string message)
         {
-            string str = arg.GetString(0).Replace("\n", "").Replace("\r", "").Trim();
+            string str = message.Replace("\n", "").Replace("\r", "").Trim();
 
             // Check if it is a chat command
             if (string.IsNullOrEmpty(str) || str[0] != '/' || str.Length <= 1)
@@ -346,27 +345,28 @@ namespace Oxide.Game.Rust
             }
 
             // Get player objects
-            BasePlayer player = arg.Connection.player as BasePlayer;
-            IPlayer iplayer = player?.IPlayer;
-            if (iplayer == null)
+            IPlayer player = basePlayer?.IPlayer;
+            if (player == null)
             {
                 return;
             }
 
             // Is the command blocked?
-            object commandSpecific = Interface.CallHook("OnPlayerCommand", arg);
-            object commandCovalence = Interface.CallHook("OnUserCommand", iplayer, cmd, args);
-            if (commandSpecific != null || commandCovalence != null)
+            object commandSpecific = Interface.CallHook("OnPlayerCommand", basePlayer, cmd, args);
+            object commandCovalence = Interface.CallHook("OnUserCommand", player, cmd, args);
+            //object commandDeprecated = Interface.Oxide.CallDeprecatedHook("OnPlayerCommand", $"OnPlayerCommand(BasePlayer player, string command, string[] args)",
+            //    new System.DateTime(2020, 1, 1), new ConsoleSystem.Arg(ConsoleSystem.Option.Server.FromConnection(basePlayer.Connection), ConsoleSystem.BuildCommand("chat.say", cmd, args)));
+            if (commandSpecific != null || commandCovalence != null /*|| commandDeprecated != null*/)
             {
                 return;
             }
 
             // Is it a valid chat command?
-            if (!Covalence.CommandSystem.HandleChatMessage(iplayer, str) && !cmdlib.HandleChatCommand(player, cmd, args))
+            if (!Covalence.CommandSystem.HandleChatMessage(player, str) && !cmdlib.HandleChatCommand(basePlayer, cmd, args))
             {
                 if (Interface.Oxide.Config.Options.Modded)
                 {
-                    iplayer.Reply(string.Format(lang.GetMessage("UnknownCommand", this, iplayer.Id), cmd));
+                    player.Reply(string.Format(lang.GetMessage("UnknownCommand", this, player.Id), cmd));
                 }
             }
         }
