@@ -313,7 +313,7 @@ namespace Oxide.Game.Rust
             // Call game and covalence hooks
             object chatSpecific = Interface.CallHook("OnPlayerChat", basePlayer, message, channel);
             object chatCovalence = Interface.CallHook("OnUserChat", player, message);
-            //object chatDeprecated = Interface.Oxide.CallDeprecatedHook("OnPlayerChat", $"OnPlayerChat(BasePlayer player, string message, Chat.ChatChannel channel)",
+            //object chatDeprecated = Interface.Oxide.CallDeprecatedHook("OnPlayerChat", "OnPlayerChat(BasePlayer player, string message, Chat.ChatChannel channel)",
             //    new System.DateTime(2020, 1, 1), new ConsoleSystem.Arg(ConsoleSystem.Option.Server.FromConnection(basePlayer.Connection), ConsoleSystem.BuildCommand("chat.say", message)), channel);
             return chatSpecific ?? chatCovalence /*?? chatDeprecated*/; // TODO: Fix hook conflict when multiple return
         }
@@ -354,7 +354,7 @@ namespace Oxide.Game.Rust
             // Is the command blocked?
             object commandSpecific = Interface.CallHook("OnPlayerCommand", basePlayer, cmd, args);
             object commandCovalence = Interface.CallHook("OnUserCommand", player, cmd, args);
-            //object commandDeprecated = Interface.Oxide.CallDeprecatedHook("OnPlayerCommand", $"OnPlayerCommand(BasePlayer player, string command, string[] args)",
+            //object commandDeprecated = Interface.Oxide.CallDeprecatedHook("OnPlayerCommand", "OnPlayerCommand(BasePlayer player, string command, string[] args)",
             //    new System.DateTime(2020, 1, 1), new ConsoleSystem.Arg(ConsoleSystem.Option.Server.FromConnection(basePlayer.Connection), ConsoleSystem.BuildCommand("chat.say", cmd, args)));
             if (commandSpecific != null || commandCovalence != null /*|| commandDeprecated != null*/)
             {
@@ -401,8 +401,8 @@ namespace Oxide.Game.Rust
         /// Called when the player has connected
         /// </summary>
         /// <param name="player"></param>
-        [HookMethod("OnPlayerInit")]
-        private void OnPlayerInit(BasePlayer player)
+        [HookMethod("IOnPlayerConnected")]
+        private void IOnPlayerConnected(BasePlayer player)
         {
             // Set language for player
             lang.SetLanguage(player.net.connection.info.GetString("global.language", "en"), player.UserIDString);
@@ -415,6 +415,10 @@ namespace Oxide.Game.Rust
                 player.IPlayer = iplayer;
                 Interface.CallHook("OnUserConnected", iplayer);
             }
+
+            Interface.Oxide.CallHook("OnPlayerConnected", player);
+            Interface.Oxide.CallDeprecatedHook("OnPlayerInit", "OnPlayerConnected(BasePlayer player)",
+                new System.DateTime(2020, 4, 1), player);
         }
 
         /// <summary>
@@ -496,13 +500,13 @@ namespace Oxide.Game.Rust
             return BaseEntity.Query.Server.GetInSphere(position, distance, targetList,
                 entity =>
                 {
-                    BasePlayer player = entity as BasePlayer;
-                    object callHook = player != null && npc != null && player != npc ? Interface.CallHook("OnNpcPlayerTarget", npc, player) : null;
+                    BasePlayer target = entity as BasePlayer;
+                    object callHook = target != null && npc != null && target != npc ? Interface.CallHook("OnNpcTarget", npc, target) : null;
                     if (callHook != null)
                     {
                         foreach (Memory.SeenInfo seenInfo in npc.AiContext.Memory.All)
                         {
-                            if (seenInfo.Entity == player)
+                            if (seenInfo.Entity == target)
                             {
                                 npc.AiContext.Memory.All.Remove(seenInfo);
                                 break;
@@ -511,7 +515,7 @@ namespace Oxide.Game.Rust
 
                         foreach (Memory.ExtendedInfo extendedInfo in npc.AiContext.Memory.AllExtended)
                         {
-                            if (extendedInfo.Entity == player)
+                            if (extendedInfo.Entity == target)
                             {
                                 npc.AiContext.Memory.AllExtended.Remove(extendedInfo);
                                 break;
@@ -519,7 +523,7 @@ namespace Oxide.Game.Rust
                         }
                     }
 
-                    return player != null && callHook == null && player.isServer && !player.IsSleeping() && !player.IsDead() && player.Family != npc.Family;
+                    return target != null && callHook == null && target.isServer && !target.IsSleeping() && !target.IsDead() && target.Family != npc.Family;
                 });
         }
 
@@ -528,8 +532,8 @@ namespace Oxide.Game.Rust
         /// </summary>
         /// <param name="npc"></param>
         /// <returns></returns>
-        [HookMethod("IOnNpcPlayerSenseClose")]
-        private object IOnNpcPlayerSenseClose(NPCPlayerApex npc)
+        [HookMethod("IOnNpcSenseClose")]
+        private object IOnNpcSenseClose(NPCPlayerApex npc)
         {
             NPCPlayerApex.EntityQueryResultCount = GetPlayersSensed(npc, npc.ServerPosition, npc.Stats.CloseRange, NPCPlayerApex.EntityQueryResults);
             return true;
@@ -540,23 +544,23 @@ namespace Oxide.Game.Rust
         /// </summary>
         /// <param name="npc"></param>
         /// <returns></returns>
-        [HookMethod("IOnNpcPlayerSenseVision")]
-        private object IOnNpcPlayerSenseVision(NPCPlayerApex npc)
+        [HookMethod("IOnNpcSenseVision")]
+        private object IOnNpcSenseVision(NPCPlayerApex npc)
         {
             NPCPlayerApex.PlayerQueryResultCount = GetPlayersSensed(npc, npc.ServerPosition, npc.Stats.VisionRange, NPCPlayerApex.PlayerQueryResults);
             return true;
         }
 
         /// <summary>
-        /// Called when a Murderer NPC player tries to target an entity
+        /// Called when an Apex NPC player (i.e. murderer) tries to target an entity
         /// </summary>
         /// <param name="npc"></param>
         /// <param name="target"></param>
         /// <returns></returns>
-        [HookMethod("IOnNpcPlayerTarget")]
-        private object IOnNpcPlayerTarget(NPCPlayerApex npc, BaseEntity target)
+        [HookMethod("IOnNpcTarget")]
+        private object IOnNpcTarget(NPCPlayerApex npc, BaseEntity target)
         {
-            if (Interface.CallHook("OnNpcPlayerTarget", npc, target) != null)
+            if (Interface.CallHook("OnNpcTarget", npc, target) != null)
             {
                 return 0f;
             }
@@ -565,18 +569,20 @@ namespace Oxide.Game.Rust
         }
 
         /// <summary>
-        /// Called when an HTN NPC player tries to target an entity
+        /// Called when an HTN NPC player (old scientist) tries to target an entity
         /// </summary>
         /// <param name="npc"></param>
         /// <param name="target"></param>
+        /// <param name="index"></param>
         /// <returns></returns>
-        [HookMethod("IOnHtnNpcPlayerTarget")]
-        private object IOnHtnNpcPlayerTarget(IHTNAgent npc, BasePlayer target)
+        [HookMethod("IOnNpcTarget")]
+        private object IOnNpcTarget(IHTNAgent npc, BasePlayer target, int index)
         {
-            if (npc != null && Interface.CallHook("OnNpcPlayerTarget", npc.Body, target) != null)
+            if (npc != null && Interface.CallHook("OnNpcTarget", npc.Body, target) != null)
             {
-                npc.AiDomain.NpcContext.BaseMemory.Forget(0f);
-                npc.AiDomain.NpcContext.BaseMemory.PrimaryKnownEnemyPlayer.PlayerInfo.Player = null;
+                npc.AiDomain.NpcContext.PlayersInRange.RemoveAt(index);
+                npc.AiDomain.NpcContext.BaseMemory.Forget(0f); // Unsure if still needed
+                npc.AiDomain.NpcContext.BaseMemory.PrimaryKnownEnemyPlayer.PlayerInfo.Player = null; // Unsure if still needed
                 return true;
             }
 
@@ -592,12 +598,14 @@ namespace Oxide.Game.Rust
         [HookMethod("IOnNpcTarget")]
         private object IOnNpcTarget(BaseNpc npc, BaseEntity target)
         {
-            object callHook = Interface.CallHook("OnNpcTarget", npc, target);
-            if (callHook != null)
+            if (Interface.CallHook("OnNpcTarget", npc, target) != null)
             {
                 npc.SetFact(BaseNpc.Facts.HasEnemy, 0);
                 npc.SetFact(BaseNpc.Facts.EnemyRange, 3);
                 npc.SetFact(BaseNpc.Facts.AfraidRange, 1);
+                npc.AiContext.EnemyPlayer = null;
+                npc.AiContext.LastEnemyPlayerScore = 0f;
+                npc.playerTargetDecisionStartTime = 0f;
                 return 0f;
             }
 
@@ -638,8 +646,8 @@ namespace Oxide.Game.Rust
         private object IOnActiveItemChange(BasePlayer player, Item oldItem, uint newItemId)
         {
             object newHook = Interface.Oxide.CallHook("OnActiveItemChange", player, oldItem, newItemId);
-            object oldHook = Interface.Oxide.CallDeprecatedHook("OnActiveItemChange", $"OnActiveItemChange(BasePlayer player, Item oldItem, uint newItemId)",
-                new System.DateTime(2020, 1, 1), player, newItemId);
+            object oldHook = Interface.Oxide.CallDeprecatedHook("OnActiveItemChange", "OnActiveItemChange(BasePlayer player, Item oldItem, uint newItemId)",
+                new System.DateTime(2020, 4, 1), player, newItemId);
             return newHook ?? oldHook;
         }
 
@@ -647,15 +655,43 @@ namespace Oxide.Game.Rust
         private void IOnActiveItemChanged(BasePlayer player, Item oldItem, Item newItem)
         {
             Interface.Oxide.CallHook("OnActiveItemChanged", player, oldItem, newItem);
-            Interface.Oxide.CallDeprecatedHook("OnPlayerActiveItemChanged", $"OnActiveItemChanged(BasePlayer player, Item oldItem, Item newItem)",
-                new System.DateTime(2020, 1, 1), player, oldItem, newItem);
+            Interface.Oxide.CallDeprecatedHook("OnPlayerActiveItemChanged", "OnActiveItemChanged(BasePlayer player, Item oldItem, Item newItem)",
+                new System.DateTime(2020, 4, 1), player, oldItem, newItem);
+        }
+
+        [HookMethod("OnEntityKill")]
+        private object OnEntityKill(CH47HelicopterAIController heli)
+        {
+            return Interface.Oxide.CallDeprecatedHook("OnHelicopterKilled", "OnEntityKill(CH47HelicopterAIController heli)",
+                new System.DateTime(2020, 4, 1), heli);
+        }
+
+        [HookMethod("OnNpcAttack")]
+        private object OnNpcAttack(BaseNpc npc)
+        {
+            return Interface.Oxide.CallDeprecatedHook("CanNpcAttack", "OnNpcAttack(BaseNpc npc)",
+                new System.DateTime(2020, 4, 1), npc);
+        }
+
+        [HookMethod("OnNpcResume")]
+        private object OnNpcResume(NPCPlayerApex npc)
+        {
+            return Interface.Oxide.CallDeprecatedHook("OnNpcPlayerResume", "OnNpcResume(NPCPlayerApex npc)",
+                new System.DateTime(2020, 4, 1), npc);
+        }
+
+        [HookMethod("OnPlayerDeath")]
+        private object OnPlayerDeath(BasePlayer player, HitInfo hitInfo)
+        {
+            return Interface.Oxide.CallDeprecatedHook("OnPlayerDie", "OnPlayerDeath(BasePlayer player, HitInfo hitInfo)",
+                new System.DateTime(2020, 4, 1), player, hitInfo);
         }
 
         [HookMethod("OnQuarryToggled")]
         private void OnQuarryToggled(MiningQuarry quarry)
         {
-            Interface.Oxide.CallDeprecatedHook("OnQuarryEnabled", $"OnQuarryToggled(MiningQuarry quarry)",
-                new System.DateTime(2020, 1, 1), quarry);
+            Interface.Oxide.CallDeprecatedHook("OnQuarryEnabled", "OnQuarryToggled(MiningQuarry quarry)",
+                new System.DateTime(2020, 4, 1), quarry);
         }
 
         #endregion Deprecated Hooks
