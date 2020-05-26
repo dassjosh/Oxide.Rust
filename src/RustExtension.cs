@@ -70,7 +70,7 @@ namespace Oxide.Game.Rust
         public override string[] WhitelistNamespaces => new[]
         {
             "ConVar", "Dest", "Facepunch", "Network", "Oxide.Game.Rust.Cui", "ProtoBuf", "PVT", "Rust", "Steamworks", "System.Collections",
-            "System.Security.Cryptography", "System.Text", "UnityEngine"
+            "System.Security.Cryptography", "System.Text", "UnityEngine", "System.Threading.Monitor"
         };
 
         /// <summary>
